@@ -119,8 +119,141 @@ MCP是一种标准化的方式，用于使AI代理连接到和使用外部工具
 #### 可用的MCP工具
 
 - 数据库，MySQL，PostgreSQL，SQLite
-- 表格，Excel
+- 表格，Excel  
 - APIs，RESTful API，GraphQL
 - 文件，本地文件系统和云存储
 - 浏览器，Playwright自动化
 - 项目管理，Jira、Github
+
+## 二、构建AI Agent
+
+### LLM 应用 MCP 的执行流程
+
+1. LLM 读取 config.json 文件。
+2. 根据用户输入，LLM 解析出需要调用的 MCP 工具。
+3. LLM 调用对应的 MCP 工具。
+4. MCP 工具执行任务，返回结果。
+5. LLM 根据结果，生成最终的响应。
+
+### 安装 Playwright MCP
+
+```js
+{
+    "mcpServers": {
+        "playwright": {
+            "command": "npx",
+            "args": ["@playwright/mcp@latest"]
+        }
+    }
+}
+```
+
+### 安装 MySQL MCP
+
+使用 `pip` 命令安装 MCP。
+```bash
+pip install mysql-mcp-server
+```
+
+使用 `pip show` 命令查看安装的 MCP 工具所在位置。
+
+```bash
+pip show mysql-mcp-server
+```
+
+使用 `pip` 命令安装 `uv` 工具。
+
+```bash
+pip install uv
+```
+
+通过MCP进行数据库操作。
+
+```js
+{
+    "mcpServers": {
+        "mysql": {
+            "command": "uv",
+            "args": [
+                "--directory",
+                "C:\\Users\\Byrne.LAPTOP-FJ476S4Q\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages",
+                "run",
+                "mysql_mcp_server"
+            ],
+            "env": {
+                "MYSQL_HOST": "localhost",
+                "MYSQL_PORT": "3306",
+                "MYSQL_USER": "admin",
+                "MYSQL_PASSWORD": "admin",
+                "MYSQL_DATABASE": "mydatabase"
+            }
+        }
+    }
+}
+```
+
+### 安装 REST-MCP-SERVER
+
+通过MCP进行REST API调用。
+
+```py
+{
+    "mcpServers": {
+        "rest-api": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "dkmaker-mcp-rest-api"
+            ],
+            "env": {
+                "REST_BASE_URL": "",
+                "HEADER_Accept": "application/json"
+            }
+        }
+    }
+}
+```
+
+### 安装 FileSystem MCP
+
+通过MCP进行文件系统操作。
+
+```py
+{
+    "mcpServers": {
+        "filesystem": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@modelcontextprotocol/server-filesystem",
+                "D:\\SourceCode\\learn-agentic-ai"
+            ]
+        }
+    }
+}
+```
+
+### 安装 Excel MCP
+
+通过MCP进行读写Excel文件。
+
+```py
+{
+    "mcpServers": {
+        "excel-mcp-server": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@negokaz/excel-mcp-server"
+            ],
+            "env": {
+                "EXCEL_MCP_PAGING_CELLS_LIMIT": "4000"
+            }
+        }
+    }
+}
+```
+
+### 查看所有 MCP 列表
+
+https://smithery.ai
