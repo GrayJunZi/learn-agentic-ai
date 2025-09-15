@@ -405,3 +405,111 @@ pip install -U "autogen-ext[ollama]"
 ```bash
 pip install -U "autogen-ext[mcp]"
 ```
+
+## 四、AutoGen框架基础 AssistantAgents 与 RoundRobinGroupChat
+
+### 如何启动运行任何Python代码及其函数调用
+
+```py
+import asyncio
+
+async def main():
+    print('I am inside function')
+
+asyncio.run(main())
+```
+
+### AssistantAgent 介绍及其实现
+
+#### AI Agent系统架构
+
+- 单智能体 - 该智能体能解决问题并返回单一响应，这个智能体将成为任务助手。
+- 多智能体 - 多个智能体合作完成任务，每个智能体负责不同的任务。
+- 人机交互智能体 - 每个阶段都需要人类的介入，代理与人类互动以逐步提供协助，直至任务完成。
+
+#### 构建智能体
+
+```py
+import asyncio
+
+from autogen_agentchat.agents import AssistantAgent
+from autogen_ext.models.ollama import OllamaChatCompletionClient
+
+
+async def main():
+    ollama_model_client = OllamaChatCompletionClient(model='deepseek-r1:14b')
+
+    AssistantAgent(name='assistant', model_client=ollama_model_client)
+
+asyncio.run(main())
+```
+
+### 如何让AssistantAgent回答图像文件等多模态输入
+
+> 多模态输入指的是模型能够处理多种类型的输入，例如文本、图像、音频、视频等。
+
+```py
+import asyncio
+
+from autogen_agentchat.agents import AssistantAgent
+from autogen_agentchat.messages import MultiModalMessage
+from autogen_agentchat.ui import Console
+from autogen_core import Image
+from autogen_ext.models.ollama import OllamaChatCompletionClient
+
+
+async def main():
+    # 创建 ollama 模型客户端 实例
+    ollama_model_client = OllamaChatCompletionClient(model='qwen2.5vl:latest')
+
+    assistant = AssistantAgent(name='MultiModalAssistant', model_client=ollama_model_client)
+
+    image = Image.from_file("..\\1.png")
+
+    multimodal_message = MultiModalMessage(
+        content=["What do you see in this image", image],
+        source="user",
+    )
+
+    await Console(assistant.run_stream(task=multimodal_message))
+    await ollama_model_client.close()
+
+asyncio.run(main())
+```
+
+### 什么是RoundRobinGroupChat？如何在团队中的代理之间进行协调
+
+> RoundRobinGroupChat 是一种团队合作模式，其中每个代理在团队中轮流执行任务。
+
+```py
+import asyncio
+
+from autogen_agentchat.agents import AssistantAgent
+from autogen_agentchat.teams import RoundRobinGroupChat
+from autogen_ext.models.ollama import OllamaChatCompletionClient
+
+
+async def main():
+    # 创建 ollama 模型客户端 实例
+    ollama_model_client = OllamaChatCompletionClient(model='qwen2.5vl:latest')
+
+    # 创建第一个智能体（老师）
+    agent1 = AssistantAgent(
+        name='MathTeacher',
+        model_client=ollama_model_client,
+        system_message="你是一名数学老师，要清晰地解释概念并提出问题。"
+    )
+
+    # 创建第二个智能体（学生）
+    agent2 = AssistantAgent(
+        name='Student',
+        model_client=ollama_model_client,
+        system_message="你是一名好奇的学生。请提出问题，并展示你的思考过程。"
+    )
+
+    team = RoundRobinGroupChat(participants=[agent1, agent2])
+    team.run_stream(task="让我们讨论一下什么是乘法以及它是如何运作的。")
+
+
+asyncio.run(main())
+```
