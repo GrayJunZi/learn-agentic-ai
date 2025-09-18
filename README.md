@@ -513,3 +513,225 @@ async def main():
 
 asyncio.run(main())
 ```
+
+### 五、AutoGen框架基础 Termination、StateSaving以及HumanInLoop
+
+#### 什么是Termination？我们为什么需要它？
+
+> 可以定义终止条件(Termination)来控制团队的轮询群聊(RoundRobinGroupChat)，例如任务完成、时间限制、用户输入等。
+> 终止条件可以是静态的，也可以是动态的，根据任务的进度和结果来确定。
+> 终止条件的设置可以确保任务在合理的时间内完成，避免无限循环或资源浪费。
+
+通过最大消息数来控制终止。
+> 可以设置最大消息数，当团队成员之间的消息数量超过最大消息数时，团队将停止轮询。
+> 最大消息数的设置可以确保团队在合理的时间内完成任务，避免无限循环或资源浪费。
+
+```py
+import asyncio
+
+from autogen_agentchat.agents import AssistantAgent
+from autogen_agentchat.conditions import MaxMessageTermination
+from autogen_agentchat.teams import RoundRobinGroupChat
+from autogen_agentchat.ui import Console
+from autogen_ext.models.ollama import OllamaChatCompletionClient
+
+
+async def main():
+    # 创建 ollama 模型客户端 实例
+    ollama_model_client = OllamaChatCompletionClient(model='qwen2.5vl:latest')
+
+    # 创建第一个智能体（老师）
+    agent1 = AssistantAgent(
+        name='MathTeacher',
+        model_client=ollama_model_client,
+        system_message="你是一名数学老师，要清晰地解释概念并提出问题。"
+    )
+
+    # 创建第二个智能体（学生）
+    agent2 = AssistantAgent(
+        name='Student',
+        model_client=ollama_model_client,
+        system_message="你是一名好奇的学生。请提出问题，并展示你的思考过程。"
+    )
+
+    team = RoundRobinGroupChat(
+        participants=[agent1, agent2],
+        termination_condition=MaxMessageTermination(max_messages=6),
+    )
+
+    await Console(team.run_stream(task="让我们讨论一下什么是乘法以及它是如何运作的。"))
+
+    await ollama_model_client.close()
+
+asyncio.run(main())
+```
+
+#### 如何让人类进入循环，AutoGen中的UserProxyAgent介绍
+
+将 `UserProxyAgent` 加入到聊天群组中以实现人类参与循环。
+
+```py
+import asyncio
+
+from autogen_agentchat.agents import AssistantAgent, UserProxyAgent
+from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermination
+from autogen_agentchat.teams import RoundRobinGroupChat
+from autogen_agentchat.ui import Console
+from autogen_ext.models.ollama import OllamaChatCompletionClient
+
+
+async def main():
+    # 创建 ollama 模型客户端 实例
+    ollama_model_client = OllamaChatCompletionClient(model='qwen2.5vl:latest')
+
+    # 创建第一个智能体（老师）
+    assistant = AssistantAgent(
+        name='MathTutor',
+        model_client=ollama_model_client,
+        system_message="你是一位乐于助人的数学辅导老师，请帮助用户一步一步解决数学问题。"
+        "当用户说 '已完成' 或类似语句表示结束时,予以确认并回复 '课程完成' 以结束会话。"
+    )
+
+    # 创建第二个智能体（学生用户）
+    user_proxy = UserProxyAgent(
+        name='Student',
+    )
+
+    team = RoundRobinGroupChat(
+        participants=[assistant, user_proxy],
+        termination_condition=TextMentionTermination("课程完成"),
+    )
+
+    await Console(team.run_stream(task="我需要帮助解决代数问题，你能帮我解答 2*4+5 的结果吗？"))
+
+    await ollama_model_client.close()
+
+asyncio.run(main())
+```
+
+#### 状态保存机制，如何在保留状态的代理之间切换
+
+假设我们在与智能体进行对话，如果遇到突发情况代理将被关闭，或者Tokens耗尽等，导致智能体被关闭时，如果启动新代码那么必须从头开始，之前讨论的内容将消失。
+
+我们可以将对话内容保存至`json`文件中，这样无论切换哪几种代理，都可以保留之前的对话状态。
+
+我们可以使用 `save_state()` 函数 和 `load_state()` 函数来保存和加载智能体的状态。
+
+```py
+import asyncio
+import json
+
+from autogen_agentchat.agents import AssistantAgent
+from autogen_agentchat.conditions import MaxMessageTermination
+from autogen_agentchat.teams import RoundRobinGroupChat
+from autogen_agentchat.ui import Console
+from autogen_ext.models.ollama import OllamaChatCompletionClient
+
+
+async def main():
+    # 创建 ollama 模型客户端 实例
+    ollama_model_client = OllamaChatCompletionClient(model='qwen2.5vl:latest')
+
+    # 创建第一个智能体
+    agent1 = AssistantAgent(name='Helper', model_client=ollama_model_client)
+
+    # 创建第二个智能体
+    agent2 = AssistantAgent(name='BackupHelper', model_client=ollama_model_client)
+
+    await Console(agent1.run_stream(task="我最喜欢的颜色是蓝色。"))
+
+    # 保存状态
+    state = await agent1.save_state()
+    with open('memory.json', 'w', encoding='utf-8') as f:
+        json.dump(state, f)
+
+    # 加载状态
+    with open('memory.json', 'r', encoding='utf-8') as f:
+        save_state = json.load(f)
+    await agent2.load_state(save_state)
+
+    await Console(agent2.run_stream(task="我最喜欢的颜色是什么？"))
+
+    await ollama_model_client.close()
+
+
+asyncio.run(main())
+```
+
+#### 使用 SelectorGroupChat 实现动态选择在团队中执行任务的代理
+
+`SelectorGroupChat` 会根据当前的任务和上下文，动态选择在团队中执行任务的代理。
+
+```py
+import asyncio
+import json
+
+from autogen_agentchat.agents import AssistantAgent
+from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermination
+from autogen_agentchat.teams import SelectorGroupChat
+from autogen_agentchat.ui import Console
+from autogen_ext.models.ollama import OllamaChatCompletionClient
+
+
+async def main():
+    # 创建 ollama 模型客户端 实例
+    ollama_model_client = OllamaChatCompletionClient(model='qwen2.5vl:latest')
+
+    researcher = AssistantAgent(
+        name="ResearcherAgent",
+        model_client=ollama_model_client,
+        system_message="你是一位研究人员。你的职责是收集信息并仅提供研究结果。"
+                       "不要撰写文章或创建内容——只需提供研究数据和事实。"
+    )
+
+    writer = AssistantAgent(
+        name="WriterAgent",
+        model_client=ollama_model_client,
+        system_message="你是一位作家。你的职责是接收研究信息，"
+                       "并据此创作出高质量的文章。请等待研究信息提供完毕后再进行内容撰写。"
+    )
+
+    critic = AssistantAgent(
+        name="CriticAgent",
+        model_client=ollama_model_client,
+        system_message="你是一位评论家。请审阅撰写好的内容并提供反馈意见。"
+                       "当对最终结果满意时，请说‘TERMINATE’（终止）。"
+    )
+
+    text_termination = TextMentionTermination("TERMINATE")
+    max_messages_termination = MaxMessageTermination(max_messages=15)
+
+    termination = text_termination | max_messages_termination
+
+    team = SelectorGroupChat(
+        participants=[critic, writer, researcher],
+        model_client=ollama_model_client,
+        termination_condition=termination,
+        allow_repeated_speaker=True
+    )
+
+    await Console(team.run_stream(task="研究可再生能源趋势，并撰写一篇关于太阳能未来发展的简短文章。"))
+
+    # 关闭 ollama 模型客户端 实例
+    await ollama_model_client.close()
+
+asyncio.run(main())
+```
+
+可以使用 `|` 将多种终止条件组合使用，例如：
+- `TextMentionTermination`：当智能体在回复中提到特定文本时触发终止。
+- `MaxMessageTermination`：当智能体发送的消息数量达到预设值时触发终止。
+
+```py
+text_termination = TextMentionTermination("TERMINATE")
+max_messages_termination = MaxMessageTermination(max_messages=15)
+
+termination = text_termination | max_messages_termination
+
+team = SelectorGroupChat(
+    participants=[critic, writer, researcher],
+    model_client=ollama_model_client,
+    termination_condition=termination,
+    allow_repeated_speaker=True
+)
+```
