@@ -491,7 +491,7 @@ from autogen_ext.models.ollama import OllamaChatCompletionClient
 
 async def main():
     # 创建 ollama 模型客户端 实例
-    ollama_model_client = OllamaChatCompletionClient(model='qwen2.5vl:latest')
+    ollama_model_client = OllamaChatCompletionClient(model='qwen3:latest')
 
     # 创建第一个智能体（老师）
     agent1 = AssistantAgent(
@@ -514,9 +514,9 @@ async def main():
 asyncio.run(main())
 ```
 
-### 五、AutoGen框架基础 Termination、StateSaving以及HumanInLoop
+## 五、AutoGen框架基础 Termination、StateSaving以及HumanInLoop
 
-#### 什么是Termination？我们为什么需要它？
+### 什么是Termination？我们为什么需要它？
 
 > 可以定义终止条件(Termination)来控制团队的轮询群聊(RoundRobinGroupChat)，例如任务完成、时间限制、用户输入等。
 > 终止条件可以是静态的，也可以是动态的，根据任务的进度和结果来确定。
@@ -538,7 +538,7 @@ from autogen_ext.models.ollama import OllamaChatCompletionClient
 
 async def main():
     # 创建 ollama 模型客户端 实例
-    ollama_model_client = OllamaChatCompletionClient(model='qwen2.5vl:latest')
+    ollama_model_client = OllamaChatCompletionClient(model='qwen3:latest')
 
     # 创建第一个智能体（老师）
     agent1 = AssistantAgent(
@@ -566,7 +566,7 @@ async def main():
 asyncio.run(main())
 ```
 
-#### 如何让人类进入循环，AutoGen中的UserProxyAgent介绍
+### 如何让人类进入循环，AutoGen中的UserProxyAgent介绍
 
 将 `UserProxyAgent` 加入到聊天群组中以实现人类参与循环。
 
@@ -582,7 +582,7 @@ from autogen_ext.models.ollama import OllamaChatCompletionClient
 
 async def main():
     # 创建 ollama 模型客户端 实例
-    ollama_model_client = OllamaChatCompletionClient(model='qwen2.5vl:latest')
+    ollama_model_client = OllamaChatCompletionClient(model='qwen3:latest')
 
     # 创建第一个智能体（老师）
     assistant = AssistantAgent(
@@ -609,7 +609,7 @@ async def main():
 asyncio.run(main())
 ```
 
-#### 状态保存机制，如何在保留状态的代理之间切换
+### 状态保存机制，如何在保留状态的代理之间切换
 
 假设我们在与智能体进行对话，如果遇到突发情况代理将被关闭，或者Tokens耗尽等，导致智能体被关闭时，如果启动新代码那么必须从头开始，之前讨论的内容将消失。
 
@@ -630,7 +630,7 @@ from autogen_ext.models.ollama import OllamaChatCompletionClient
 
 async def main():
     # 创建 ollama 模型客户端 实例
-    ollama_model_client = OllamaChatCompletionClient(model='qwen2.5vl:latest')
+    ollama_model_client = OllamaChatCompletionClient(model='qwen3:latest')
 
     # 创建第一个智能体
     agent1 = AssistantAgent(name='Helper', model_client=ollama_model_client)
@@ -658,7 +658,7 @@ async def main():
 asyncio.run(main())
 ```
 
-#### 使用 SelectorGroupChat 实现动态选择在团队中执行任务的代理
+### 使用 SelectorGroupChat 实现动态选择在团队中执行任务的代理
 
 `SelectorGroupChat` 会根据当前的任务和上下文，动态选择在团队中执行任务的代理。
 
@@ -675,7 +675,7 @@ from autogen_ext.models.ollama import OllamaChatCompletionClient
 
 async def main():
     # 创建 ollama 模型客户端 实例
-    ollama_model_client = OllamaChatCompletionClient(model='qwen2.5vl:latest')
+    ollama_model_client = OllamaChatCompletionClient(model='qwen3:latest')
 
     researcher = AssistantAgent(
         name="ResearcherAgent",
@@ -734,4 +734,101 @@ team = SelectorGroupChat(
     termination_condition=termination,
     allow_repeated_speaker=True
 )
+```
+
+## 六、AutoGen框架基础 SelectorGroupChat、MCPWorkbench和BrowserAgent
+
+### Autogen中具有内置浏览器自动化功能的特殊代理
+
+AutoGen中内置的`MultimodalWebSurfer`代理可以用于浏览器自动化任务，例如搜索、导航和提取信息。
+
+其底层使用了`Playwright`库来实现浏览器自动化。
+
+```py
+import asyncio
+
+from autogen_agentchat.teams import RoundRobinGroupChat
+from autogen_agentchat.ui import Console
+from autogen_ext.agents.web_surfer import MultimodalWebSurfer
+from autogen_ext.models.ollama import OllamaChatCompletionClient
+
+
+async def main():
+    # 创建 ollama 模型客户端 实例
+    ollama_model_client = OllamaChatCompletionClient(model='qwen3:latest')
+
+    web_surfer_agent = MultimodalWebSurfer(
+        name="WebSurfer",
+        model_client=ollama_model_client,
+        headless=False,
+        animate_actions=True,
+    )
+
+    team = RoundRobinGroupChat(
+        participants=[web_surfer_agent],
+        max_turns=3
+    )
+
+    await Console(team.run_stream(task="导航到必应中搜索 'AutoGen 框架 Python' 然后总结你找到的内容。"))
+
+    await web_surfer_agent.close()
+
+    # 关闭 ollama 模型客户端 实例
+    await ollama_model_client.close()
+
+asyncio.run(main())
+```
+
+### 如何通过 mcpworkbench 类为 Assistant Agent 添加 MCP 工具支持
+
+```py
+import asyncio
+
+from autogen_agentchat.agents import AssistantAgent, UserProxyAgent
+from autogen_agentchat.conditions import TextMentionTermination
+from autogen_agentchat.teams import RoundRobinGroupChat
+from autogen_agentchat.ui import Console
+from autogen_ext.models.ollama import OllamaChatCompletionClient
+from autogen_ext.tools.mcp import StdioServerParams, McpWorkbench
+
+async def main():
+    # 文件系统MCP服务参数
+    filesystem_server_params = StdioServerParams(
+        command="npx",
+        args=[
+            "-y",
+            "@modelcontextprotocol/server-filesystem",
+            "..\\AgenticAIAutoGen",
+        ],
+        read_timeout_seconds=60
+    )
+
+    # 创建 MCP 实例
+    fs_workbench = McpWorkbench(filesystem_server_params)
+
+    async with fs_workbench as fs_wb:
+        # 创建 ollama 模型客户端 实例
+        ollama_model_client = OllamaChatCompletionClient(model='qwen3:latest')
+
+        assistant = AssistantAgent(
+            name='MathTutor',
+            model_client=ollama_model_client,
+            workbench=fs_wb,
+            system_message="你是一位乐于助人的数学辅导老师。请帮助用户一步一步解决数学问题，你需要能够访问文件系统。"
+                           "当用户说出“谢谢，已完成”或类似话语时，请予以回应，并说出“课程结束”来结束本次会话。"
+        )
+
+        user_proxy = UserProxyAgent(name="Student")
+
+        team = RoundRobinGroupChat(
+            participants=[user_proxy, assistant],
+            termination_condition=TextMentionTermination('课程完成')
+        )
+
+        await Console(team.run_stream(task="我需要解决代数问题，你可以自由创建文件来帮助学生学习。"))
+
+    # 关闭 ollama 模型客户端 实例
+    await ollama_model_client.close()
+
+asyncio.run(main())
 ```

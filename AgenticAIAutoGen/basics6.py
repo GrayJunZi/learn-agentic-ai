@@ -10,7 +10,7 @@ from autogen_ext.models.ollama import OllamaChatCompletionClient
 
 async def main():
     # 创建 ollama 模型客户端 实例
-    ollama_model_client = OllamaChatCompletionClient(model='qwen2.5vl:latest')
+    ollama_model_client = OllamaChatCompletionClient(model='qwen3:latest')
 
     researcher = AssistantAgent(
         name="ResearcherAgent",
