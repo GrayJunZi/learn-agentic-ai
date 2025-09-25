@@ -832,3 +832,90 @@ async def main():
 
 asyncio.run(main())
 ```
+
+## 七、了解Agentic工作流的目标及设置Agent的前置条件
+
+- 场景：
+    - 从`Jira`中访问最近的`bug`数据，并且需要修复并关闭缺陷。
+    - 分析所有最近关闭的缺陷并将它们整合到全面的冒烟测试(`Smoke Test`)流程中。
+    - 将测试用例转换并生成为`Playwright`自动化操作。
+    - 使用`Playwright`执行生成的测试用例并生成结构化测试结果。
+- `Jira Agent` ：
+    - 用于从`Jira`中访问和操作缺陷数据。
+    - 分析缺陷并准备整合的冒烟测试逻辑。
+- `Playwright Agent` ：
+    - `Jira Agent` 将创建的冒烟测试流程交给 `Playwright Agent`。
+    - `Playwright Agent` 负责将测试步骤转换为可执行的`Playwright`命令并执行。
+
+> 由于`Jira`需要`License`才能正常运行，所以本文后续采用`Taiga`作为示例。
+
+### 本地部署 Jira
+
+创建 `podman-compose.yml` 文件，配置jira容器。 
+
+```yml
+version: '3'
+
+services:
+  jira-postgres:
+    image: postgres:latest
+    container_name: jira-postgres
+    environment:
+      - POSTGRES_DB=jira
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - jira-net
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+  jira:
+    image: cptactionhank/atlassian-jira-software:latest
+    container_name: jira
+    depends_on:
+      - jira-postgres
+    ports:
+      - "8080:8080"
+    volumes:
+      - jira_data:/var/atlassian/jira
+        networks:
+      - jira-net
+    environment:
+      - CATALINA_OPTS=-Xms2048m -Xmx4096m
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  jira_data:
+  
+networks:
+  jira-net:
+    driver: bridge
+```
+
+> - 启动容器: `podman-compose up -d`
+> - 访问 Jira: 打开浏览器并访问 `http://localhost:8080`
+> - 登录 Jira: 初始用户名是 `admin`，密码是 `admin`。
+> - 删除容器：`podman-compose down`
+> - 移除数据卷：`podman volume rm postgres_data jira_data`
+
+### 本地部署 Taiga
+
+克隆 `Taiga` 仓库地址。
+```bash
+git clone https://github.com/taigaio/taiga-docker
+```
+
+拉取镜像并启动 `Taiga` 容器。
+```bash
+./launch-taiga.sh
+```
+
+创建管理员账号
+```bash
+./taiga-manage.sh createsuperuser
+```

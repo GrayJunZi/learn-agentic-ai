@@ -1,0 +1,41 @@
+version: '3'
+
+services:
+  jira-postgres:
+    image: postgres:latest
+    container_name: jira-postgres
+    environment:
+      - POSTGRES_DB=jira
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - jira-net
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+  jira:
+    image: cptactionhank/atlassian-jira-software:latest
+    container_name: jira
+    depends_on:
+      - jira-postgres
+    ports:
+      - "8080:8080"
+    volumes:
+      - jira_data:/var/atlassian/jira
+    networks:
+      - jira-net
+    environment:
+      - CATALINA_OPTS=-Xms2048m -Xmx4096m
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  jira_data:
+  
+networks:
+  jira-net:
+    driver: bridge
