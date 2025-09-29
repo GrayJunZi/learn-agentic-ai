@@ -1123,3 +1123,170 @@ async def main():
 
 asyncio.run(main())
 ```
+
+## 九、智能体工程模式 使用 数据库、API 和 Excel 设计多智能体系统
+
+### 理解多智能体系统的目标及其工作流程
+
+- 数据库智能体：连接多个数据库并且获取多个表的数据，这个智能体返回结构化的数据给下游智能体。
+- API+文件系统智能体：从本地文件系统读取定义好的API调用的方式，能够根据数据库智能体提供的结构化数据进行API调用。
+- Excel智能体：写入本地Excel文件。
+
+### 什么是 AgentFactory？如何在工厂内隔离和创建代理
+
+场景：
+1. 连接数据并且从多个表中获取数据。
+2. 读取API定义文件理解API调用所必须的结构。
+3. 使用从数据库中获取的数据去构建调用注册接口的方法。
+4. 验证提交数据并调用登录接口。
+5. 最终将注册的信息存储至Excel文件。
+
+#### 定义MCP配置类
+
+将各个智能体的MCP配置类进行封装。
+
+```py
+from autogen_ext.tools.mcp import StdioServerParams, McpWorkbench
+
+
+class McpConfig:
+    def __init__(self):
+        pass
+
+    def get_mysql_workbench(self):
+        mysql_server_params = StdioServerParams(
+            command="uv",
+            args=[
+                "--directory",
+                "C:\\Users\\Byrne.LAPTOP-FJ476S4Q\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages",
+                "run",
+                "mysql_mcp_server"
+            ],
+            env={
+                "MYSQL_HOST": "localhost",
+                "MYSQL_PORT": "3306",
+                "MYSQL_USER": "admin",
+                "MYSQL_PASSWORD": "admin",
+                "MYSQL_DATABASE": "mydatabase"
+            }
+        )
+
+        return McpWorkbench(server_params=mysql_server_params)
+
+    def get_rest_api_workbench(self):
+        rest_api_server_params = StdioServerParams(
+            command="npx",
+            args=[
+                "-y",
+                "dkmaker-mcp-rest-api"
+            ],
+            env={
+                "REST_BASE_URL": "",
+                "HEADER_Accept": "application/json",
+            }
+        )
+        return McpWorkbench(server_params=rest_api_server_params)
+
+    def get_excel_workbench(self):
+        excel_server_params = StdioServerParams(
+            command="npx",
+            args=[
+                "-y",
+                "@negokaz/excel-mcp-server"
+            ],
+            env={
+                "EXCEL_MCP_PAGING_CELLS_LIMIT": "4000"
+            }
+        )
+        return McpWorkbench(server_params=excel_server_params)
+
+    def get_filesystem_workbench(self):
+        filesystem_server_params = StdioServerParams(
+            command="npx",
+            args=[
+                "-y",
+                "@modelcontextprotocol/server-filesystem",
+                "D:\\SourceCode\\learn-agentic-ai"
+            ]
+        )
+        return McpWorkbench(server_params=filesystem_server_params)
+```
+
+#### 定义AgentFactory类
+
+将各个智能体的创建方法进行封装。
+
+```py
+from autogen_agentchat.agents import AssistantAgent
+
+from framework.McpConfig import McpConfig
+
+
+class AgentFactory:
+    def __init__(self,model_client):
+        self.model_client = model_client
+        self.mcp_config = McpConfig()
+    
+    def create_database_agent(self, system_message):
+        database_agent = AssistantAgent(
+            name="DatabaseAgent",
+            model_client=self.model_client,
+            workbench=self.mcp_config.get_mysql_workbench(),
+            system_message=system_message,
+        )
+        return database_agent
+
+    def create_api_agent(self, system_message):
+        rest_api_workbench = self.mcp_config.get_rest_api_workbench()
+        filesystem_workbench = self.mcp_config.get_filesystem_workbench()
+
+        api_agent = AssistantAgent(
+            name="APIAgent",
+            model_client=self.model_client,
+            workbench=[rest_api_workbench, filesystem_workbench],
+            system_message=system_message,
+        )
+        return api_agent
+
+    def create_excel_agent(self, system_message):
+        excel_agent = AssistantAgent(
+            name="ExcelAgent",
+            model_client=self.model_client,
+            workbench=self.mcp_config.get_excel_workbench(),
+            system_message=system_message,
+        )
+        return excel_agent     
+```
+
+#### 创建智能体实例
+
+在主函数中，我们使用OllamaChatCompletionClient创建一个模型客户端实例，然后通过AgentFactory创建数据库智能体、API智能体和Excel智能体。
+
+```py
+import asyncio
+
+from autogen_agentchat.conditions import TextMentionTermination
+from autogen_agentchat.teams import RoundRobinGroupChat
+from autogen_agentchat.ui import Console
+from autogen_ext.models.ollama import OllamaChatCompletionClient
+
+from framework.AgentFactory import AgentFactory
+
+
+async  def main():
+    ollama_model_client = OllamaChatCompletionClient(model="qwen3:latest")
+
+    agent_factory = AgentFactory(ollama_model_client)
+    database_agent = agent_factory.create_database_agent("")
+    api_agent = agent_factory.create_api_agent("")
+    excel_agent = agent_factory.create_excel_agent("")
+
+    team = RoundRobinGroupChat(
+        participants=[database_agent, api_agent, excel_agent],
+        termination_condition=TextMentionTermination("REGISTRATION PROCESS COMPLETE")
+    )
+
+    result = await Console(team.run_stream(task=""))
+
+asyncio.run(main())
+```
