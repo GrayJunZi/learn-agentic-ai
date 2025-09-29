@@ -2,10 +2,9 @@ from autogen_ext.tools.mcp import StdioServerParams, McpWorkbench
 
 
 class McpConfig:
-    def __init__(self):
-        pass
 
-    def get_mysql_workbench(self):
+    @staticmethod
+    def get_mysql_workbench():
         mysql_server_params = StdioServerParams(
             command="uv",
             args=[
@@ -25,7 +24,8 @@ class McpConfig:
 
         return McpWorkbench(server_params=mysql_server_params)
 
-    def get_rest_api_workbench(self):
+    @staticmethod
+    def get_rest_api_workbench():
         rest_api_server_params = StdioServerParams(
             command="npx",
             args=[
@@ -39,7 +39,8 @@ class McpConfig:
         )
         return McpWorkbench(server_params=rest_api_server_params)
 
-    def get_excel_workbench(self):
+    @staticmethod
+    def get_excel_workbench():
         excel_server_params = StdioServerParams(
             command="npx",
             args=[
@@ -52,13 +53,14 @@ class McpConfig:
         )
         return McpWorkbench(server_params=excel_server_params)
 
-    def get_filesystem_workbench(self):
+    @staticmethod
+    def get_filesystem_workbench():
         filesystem_server_params = StdioServerParams(
             command="npx",
             args=[
                 "-y",
                 "@modelcontextprotocol/server-filesystem",
-                "D:\\SourceCode\\learn-agentic-ai"
+                "D:\\SourceCode\\learn-agentic-ai\\AgenticAIAutoGen\\framework"
             ]
         )
         return McpWorkbench(server_params=filesystem_server_params)
